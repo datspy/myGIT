@@ -1,0 +1,157 @@
+---
+title: "TRANSPORT_markdown"
+author: "Gokhul MG"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+library(corrplot)
+library(psych)
+library(randomForest)
+library(ggplot2)
+library(scales)
+library(dplyr)
+setwd('C:/Users/MG Gokhul/Desktop/GreatLakes/MachineLearning')
+carsdata=read.csv('Cars.csv',header=T)
+attach(carsdata)
+```
+
+```{r}
+str(carsdata)
+```
+
+checking the data for missing values
+
+```{r}
+table(is.na(carsdata))
+names(which(sapply(carsdata, function(x) any(is.na(x)))))
+```
+
+assigning median value to fill the missing cell
+
+```{r}
+table(MBA)
+MBA.median=median(MBA,na.rm=T)
+carsdata[is.na(MBA),"MBA"]=MBA.median
+```
+
+##Exploratory Analysis
+
+
+```{r}
+hist(Distance,col='orange')
+```
+
+```{r}
+hist(Work.Exp,xlab="Work Experience(in Years)",col='light blue')
+```
+
+People who hold a license are very few.
+```{r}
+pdat <- carsdata %>% group_by(Gender,license) %>% 
+  summarise(count=n()) %>% 
+  mutate(cnt = count)
+ggplot(data=pdat, aes(x=Gender,y=cnt,fill=as.factor(license))) +
+  geom_bar(stat="identity", position="fill")
+```
+
+Probably because of very few license holders, people opting for Public Transport is more. The least preferred option is Car.
+```{r}
+pdat <- carsdata %>% group_by(Transport) %>% 
+  summarise(count=n()) %>% 
+  mutate(cnt = count)
+
+ggplot(data=pdat, aes(x=as.factor(Transport),y=cnt,fill=factor(Transport))) +
+  geom_bar(stat="identity", position="dodge")
+```
+
+#Creating a new column for Car users
+```{r}
+carsdata$isCar<- ifelse((Transport=="Car"),1,0)
+```
+
+```{r, echo=FALSE}
+attach(carsdata)
+```
+
+#people who do not have license also use Car for transport.
+```{r}
+table(license,isCar)
+```
+
+```{r}
+pdat <- carsdata %>% group_by(license,isCar) %>% summarise(count=n())
+ggplot(data=pdat, aes(x=as.factor(license),y=count,fill=factor(isCar))) +
+  geom_bar(stat="identity", position="fill") + xlab('Has License')
+```
+
+#splitting training & testing data
+
+```{r}
+indexes = sample(1:nrow(carsdata), size=0.7*nrow(carsdata))
+train.data = carsdata[indexes,]
+test.data = carsdata[-indexes,]
+dim(train.data)
+dim(test.data)
+```
+
+#Building Model for Car users
+```{r}
+rf_model <- randomForest(factor(isCar) ~ Age + Gender + Engineer + 
+                           MBA + Work.Exp + Salary + 
+                           Distance + license,
+                         data = train.data)
+
+plot(rf_model,main="")
+legend("topright", c("OOB", "0", "1"), text.col=1:6, lty=1:3, col=1:3)
+title(main="Error Rates")
+```
+
+#Finding Variable Importance & Plotting it
+```{r}
+importance    <- importance(rf_model)
+varImportance <- data.frame(Variables = row.names(importance), 
+                            Importance = round(importance[ ,'MeanDecreaseGini'],2))
+
+# Create a rank variable based on importance
+rankImportance <- varImportance %>% mutate(Rank = (dense_rank(desc(Importance))))
+
+# Use ggplot2 to visualize the relative importance of variables
+ggplot(rankImportance, aes(x = reorder(Variables, Importance), 
+                           y = Importance, fill = Importance)) +
+  geom_bar(stat='identity') + 
+  labs(x = 'Variables') +  coord_flip()
+```
+
+#Predicting Test Data
+```{r}
+prediction <- predict(rf_model, test.data)
+pcheck<-cbind(test.data,prediction)
+pcheck[,9:11]
+table(test.data$isCar,prediction)
+```
+
+```{r, echo=FALSE}
+pred.data = read.csv('carspredict.csv',header=T)
+```
+
+
+#Building Model for all Transport
+```{r}
+rf_model2 <- randomForest(factor(Transport) ~ Age + Gender + Engineer + 
+                           MBA + Work.Exp + Salary + 
+                           Distance + license,
+                         data = train.data)
+```
+
+
+#Predicting Transport for Data given in problem Statement
+```{r}
+prediction <- predict(rf_model2, pred.data)
+pcheck<-cbind(pred.data,prediction)
+pcheck
+```
+
+
