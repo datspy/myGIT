@@ -1,0 +1,124 @@
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+library(psych)
+library(VIM)
+library(caret)
+library(rpart.plot)
+library(ROCR)
+
+#Read & checkout the Data
+loandata<-read.csv(file.choose(),header=T,na.strings=c(""," ","NA"))
+attach(loandata)
+str(loandata)
+
+loandata$Credit_History <- as.factor(loandata$Credit_History)
+
+summary(loandata)
+nrow(loandata)
+
+#Check for missing values
+table(is.na(loandata))
+
+#Identify columns having missing values
+names(which(sapply(loandata, function(x) any(is.na(x)))))
+
+#LoanAmount & CreditHistory are important variables.
+#Checking how many missing values are in these columns
+sum(ifelse(is.na(loandata$LoanAmount)==T,1,0))
+sum(ifelse(is.na(loandata$Credit_History)==T,1,0))
+
+#Identify pattern of data in those Amount & Term
+unique(LoanAmount)
+unique(Loan_Amount_Term)
+
+
+#Tried Building Model with missing values removed.
+
+#loanDS<- na.omit(loandata)
+#nrow(loanDS)
+
+#Also Tried building model with missing values imputed.
+#Both had same accuracy.
+
+#All NAs imputed using kNN
+loanDS<- kNN(loandata,k=6)
+table(is.na(loanDS))
+
+dim(loandata)
+dim(loanDS)
+names(loanDS)
+
+#Remove extra columns added during imputation
+loanDS<- loanDS[,c(1:13)]
+
+summary(loanDS)
+
+#Just doing a BoxPlot of LoanAmount
+boxplot(loanDS$LoanAmount)
+boxplot.stats(loanDS$LoanAmount)
+
+#Plot Data Distribution Before and After Imputation
+
+par(mfrow=c(4,2))
+
+LA1 <- hist(loandata$LoanAmount,col="blue",main="")
+LA2 <- hist(loanDS$LoanAmount,col="green",main="")
+
+LT1 <- hist(loandata$Loan_Amount_Term,col="blue",main="")
+LT2 <- hist(loanDS$Loan_Amount_Term,col="green",main="")
+
+mtext("Histogram Before & After imputation", side = 3, line = -2, outer = TRUE)
+
+#Checking out correlation between numeric variables.
+cordata=loanDS[c(7,8,9,10)]
+corrx <- cor(cordata)
+corrplot(corrx ,type = "lower")
+
+
+#Split Train & Validation sets
+
+index=sample(1:nrow(loanDS),size=0.7*nrow(loanDS))
+loan.train=loanDS[index,]
+loan.test=loanDS[-index,]
+
+dim(loan.train)
+dim(loan.test)
+names(loan.train)
+
+#Build a logistic Regression Model using all the independent variables
+
+glm_model <- glm(Loan_Status ~ Gender + Married + Dependents + Education + 
+                   Self_Employed + ApplicantIncome + CoapplicantIncome + LoanAmount + 
+                   Loan_Amount_Term + Credit_History + Property_Area,
+                 data = loan.train, family = binomial)
+
+summary(glm_model)
+
+varImp(glm_model,scale=F)
+
+chisq.test(loan.train$Loan_Status,loan.train$Gender)
+
+
+#Prediction
+glm_prediction<-predict(glm_model,loan.test[,c(-1,-13)],type="response")
+loan.test$prediction=ifelse(glm_prediction>0.5,"Y","N")
+loan.test$isTrue<- ifelse((loan.test$Loan_Status==loan.test$prediction),1,0)
+accuracy=(sum(loan.test$isTrue==1)/nrow(loan.test))
+accuracy
+
+
+#Remove Gender, Loan_Amount_Term variables and build a model
+glm_model <- glm(Loan_Status ~ Married + Dependents + Education + 
+                   Self_Employed + ApplicantIncome + CoapplicantIncome + LoanAmount + 
+                    Credit_History + Property_Area,
+                 data = loan.train, family = binomial)
+
+glm_prediction<-predict(glm_model,loan.test[,c(-1,-13)],type="response")
+
+loan.test$prediction=ifelse(glm_prediction>0.5,"Y","N")
+loan.test$isTrue<- ifelse((loan.test$Loan_Status==loan.test$prediction),1,0)
+accuracy=(sum(loan.test$isTrue==1)/nrow(loan.test))
+accuracy
+
+confusionMatrix(loan.test$prediction,loan.test$Loan_Status)
